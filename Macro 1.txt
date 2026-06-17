@@ -1,0 +1,154 @@
+Macro 1
+Sub ActualizarAcumulado()
+
+    Const WB_ACUMULADO  As String = "Acumulado"
+    Const COL_BUSCAR    As Long = 8
+    Const COL_I         As Long = 9
+    Const COL_J         As Long = 10
+    Const COL_K         As Long = 11
+    Const COL_L         As Long = 12
+    Const COL_U         As Long = 21
+    Const FILA_INICIO   As Long = 2
+    Const MIN_CHARS     As Long = 30
+    Const MAX_CHARS     As Long = 40
+    Const COLOR_NARANJA As Long = 49407
+
+    Dim wbPago      As Workbook
+    Dim wbAcum      As Workbook
+    Dim wsPago      As Worksheet
+    Dim wsAcum      As Worksheet
+    Dim dictAcum    As Object
+    Dim filaActual  As Long
+    Dim ultimaFila  As Long
+    Dim clave       As String
+    Dim valorBR     As Variant
+    Dim valorU      As Variant
+    Dim textoValor  As String
+
+    Set wbPago = ThisWorkbook
+    Set wsPago = wbPago.ActiveSheet
+
+    ' --- Buscar Acumulado
+    Dim wb As Workbook
+    For Each wb In Application.Workbooks
+        If InStr(1, wb.Name, WB_ACUMULADO, vbTextCompare) > 0 Then
+            Set wbAcum = wb
+            Exit For
+        End If
+    Next wb
+
+    If wbAcum Is Nothing Then
+        Dim respuesta As Integer
+        respuesta = MsgBox("No se encontro el archivo 'Acumulado' abierto." & vbNewLine & _
+                           "¿Deseas seleccionarlo manualmente?", _
+                           vbYesNo + vbExclamation, "Archivo no encontrado")
+        If respuesta = vbNo Then
+            MsgBox "Proceso cancelado.", vbInformation
+            Exit Sub
+        End If
+
+        Dim rutaAcum As String
+        rutaAcum = Application.GetOpenFilename( _
+                   "Archivos Excel (*.xlsx; *.xlsm; *.xls), *.xlsx; *.xlsm; *.xls", _
+                   , "Selecciona el archivo Acumulado")
+        If rutaAcum = "False" Then
+            MsgBox "No se selecciono ningun archivo. Proceso cancelado.", vbInformation
+            Exit Sub
+        End If
+
+        Set wbAcum = Workbooks.Open(rutaAcum)
+    End If
+
+    Set wsAcum = wbAcum.Sheets(1)
+
+    ' --- Cargar diccionario
+    Set dictAcum = CreateObject("Scripting.Dictionary")
+    dictAcum.CompareMode = vbTextCompare
+
+    Dim ultimaAcum As Long
+    ultimaAcum = wsAcum.Cells(wsAcum.Rows.Count, 1).End(xlUp).Row
+
+    Dim r As Long
+    For r = 2 To ultimaAcum
+        Dim keyAcum As String
+        keyAcum = Trim(CStr(wsAcum.Cells(r, 1).Value))
+        If keyAcum <> "" And Not dictAcum.Exists(keyAcum) Then
+            dictAcum.Add keyAcum, r
+        End If
+    Next r
+
+    ultimaFila = wsPago.Cells(wsPago.Rows.Count, COL_BUSCAR).End(xlUp).Row
+
+    Application.ScreenUpdating = False
+
+    Dim filasActualizadas As Long
+    Dim filasSinCambio    As Long
+    filasActualizadas = 0
+    filasSinCambio = 0
+
+    For filaActual = FILA_INICIO To ultimaFila
+
+        ' --- SOLO procesa filas con color naranja, ignora las demas
+        If wsPago.Rows(filaActual).Interior.Color <> COLOR_NARANJA Then
+            GoTo SiguienteFila2
+        End If
+
+        clave = Trim(CStr(wsPago.Cells(filaActual, COL_BUSCAR).Value))
+        If clave = "" Then GoTo SiguienteFila2
+
+        If Not dictAcum.Exists(clave) Then
+            ' Sigue sin encontrarse: mantener naranja
+            filasSinCambio = filasSinCambio + 1
+            GoTo SiguienteFila2
+        End If
+
+        ' Encontro coincidencia: limpiar color y actualizar
+        wsPago.Rows(filaActual).Interior.ColorIndex = xlNone
+        wsPago.Cells(filaActual, COL_I).Value = ""
+        wsPago.Cells(filaActual, COL_J).Value = ""
+        wsPago.Cells(filaActual, COL_K).Value = ""
+        wsPago.Cells(filaActual, COL_L).Value = ""
+
+        Dim filaAcum As Long
+        filaAcum = dictAcum(clave)
+        valorBR = wsAcum.Cells(filaAcum, 70).Value
+
+        If IsNull(valorBR) Or valorBR = "" Then
+            wsPago.Rows(filaActual).Interior.Color = COLOR_NARANJA
+            filasSinCambio = filasSinCambio + 1
+            GoTo SiguienteFila2
+        End If
+
+        textoValor = CStr(valorBR)
+
+        If Len(textoValor) >= MIN_CHARS And Len(textoValor) <= MAX_CHARS Then
+            wsPago.Cells(filaActual, COL_I).Value = textoValor
+
+        ElseIf IsNumeric(valorBR) Then
+            wsPago.Cells(filaActual, COL_J).Value = CDbl(valorBR)
+            valorU = wsPago.Cells(filaActual, COL_U).Value
+            If IsNumeric(valorU) And valorU <> "" Then
+                wsPago.Cells(filaActual, COL_L).Value = CDbl(valorBR) + CDbl(valorU)
+            End If
+
+        ElseIf textoValor = "NO APLICA" Or textoValor = "PENDIENTE DE EMISION" Then
+            wsPago.Cells(filaActual, COL_K).Value = textoValor
+
+        Else
+            wsPago.Cells(filaActual, COL_K).Value = textoValor
+        End If
+
+        filasActualizadas = filasActualizadas + 1
+
+SiguienteFila2:
+    Next filaActual
+
+    Application.ScreenUpdating = True
+
+    MsgBox "Actualizacion completada." & vbNewLine & vbNewLine & _
+           "? Filas resueltas:      " & filasActualizadas & vbNewLine & _
+           "?? Filas aun pendientes: " & filasSinCambio, _
+           vbInformation, "Resultado"
+
+End Sub
+
