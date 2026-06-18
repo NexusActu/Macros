@@ -1,0 +1,21 @@
+ElseIf Len(Trim(CStr(valorBR))) >= MIN_CHARS _
+   And Len(Trim(CStr(valorBR))) <= MAX_CHARS Then
+
+    wsPago.Cells(filaActual, COL_E).Value = valorBR
+
+    valorBS = wsAcum.Cells(filaAcum, COL_ORIGEN_BS).Value
+
+    If Trim(valorBS & "") <> "" Then
+
+        wsPago.Cells(filaActual, COL_G).Value = valorBS
+
+        ' ***** FORMULA EN H *****
+        wsPago.Cells(filaActual, COL_H).FormulaLocal = "=G" & filaActual & "+U" & filaActual
+
+    End If
+
+Else
+
+    wsPago.Cells(filaActual, COL_F).Value = valorBR
+
+End If
