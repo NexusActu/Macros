@@ -1,0 +1,175 @@
+Sub BuscarEnAcumulado()
+
+    Const WB_ACUMULADO As String = "Acumulado sat 2026"
+    Const HOJA_ACUMULADO As String = "Acumulado sat 2026"
+
+    Const COL_BUSCAR As Long = 4
+
+    Const COL_E As Long = 5
+    Const COL_F As Long = 6
+    Const COL_G As Long = 7
+    Const COL_H As Long = 8
+
+    Const FILA_TITULOS As Long = 2
+    Const FILA_INICIO As Long = 3
+
+    Const COL_U As Long = 21
+
+    Const COL_ORIGEN_BR As Long = 70
+    Const COL_ORIGEN_BS As Long = 71
+
+    Const MIN_CHARS As Long = 30
+    Const MAX_CHARS As Long = 40
+
+    Const COLOR_NARANJA As Long = 49407
+
+    Dim wbPago As Workbook
+    Dim wbAcum As Workbook
+    Dim wsPago As Worksheet
+    Dim wsAcum As Worksheet
+
+    Dim dictAcum As Object
+
+    Dim filaActual As Long
+    Dim ultimaFila As Long
+    Dim ultimaAcum As Long
+    Dim filaAcum As Long
+
+    Dim clave As String
+    Dim valorBR As Variant
+    Dim valorBS As Variant
+    Dim textoBR As String
+
+    Set wbPago = ThisWorkbook
+    Set wsPago = wbPago.ActiveSheet
+
+    wsPago.Columns("E:H").Insert Shift:=xlToRight
+
+    wsPago.Cells(FILA_TITULOS, COL_E).Value = "Complemento"
+    wsPago.Cells(FILA_TITULOS, COL_F).Value = "No aplica y Pendiente de emision"
+    wsPago.Cells(FILA_TITULOS, COL_G).Value = "Monto"
+    wsPago.Cells(FILA_TITULOS, COL_H).Value = "Validacion"
+
+    Dim wb As Workbook
+
+    For Each wb In Application.Workbooks
+
+        If InStr(1, wb.Name, WB_ACUMULADO, vbTextCompare) > 0 Then
+
+            Set wbAcum = wb
+            Exit For
+
+        End If
+
+    Next wb
+
+    If wbAcum Is Nothing Then
+
+        MsgBox "No se encontro el archivo Acumulado.", vbExclamation
+        Exit Sub
+
+    End If
+
+    Set wsAcum = wbAcum.Sheets(HOJA_ACUMULADO)
+
+    Set dictAcum = CreateObject("Scripting.Dictionary")
+    dictAcum.CompareMode = vbTextCompare
+
+    ultimaAcum = wsAcum.Cells(wsAcum.Rows.Count, 1).End(xlUp).Row
+
+    Dim r As Long
+
+    For r = 2 To ultimaAcum
+
+        If Trim(wsAcum.Cells(r, 1).Value) <> "" Then
+
+            If Not dictAcum.Exists(Trim(wsAcum.Cells(r, 1).Value)) Then
+                dictAcum.Add Trim(wsAcum.Cells(r, 1).Value), r
+            End If
+
+        End If
+
+    Next r
+
+    ultimaFila = wsPago.Cells(wsPago.Rows.Count, COL_BUSCAR).End(xlUp).Row
+
+    Application.ScreenUpdating = False
+
+    For filaActual = FILA_INICIO To ultimaFila
+
+        clave = Trim(CStr(wsPago.Cells(filaActual, COL_BUSCAR).Value))
+
+        wsPago.Cells(filaActual, COL_E).ClearContents
+        wsPago.Cells(filaActual, COL_F).ClearContents
+        wsPago.Cells(filaActual, COL_G).ClearContents
+        wsPago.Cells(filaActual, COL_H).ClearContents
+
+        wsPago.Rows(filaActual).Interior.ColorIndex = xlNone
+
+        If clave = "" Then GoTo SiguienteFila
+
+        If Not dictAcum.Exists(clave) Then
+
+            wsPago.Rows(filaActual).Interior.Color = COLOR_NARANJA
+            GoTo SiguienteFila
+
+        End If
+
+        filaAcum = dictAcum(clave)
+
+        valorBR = wsAcum.Cells(filaAcum, COL_ORIGEN_BR).Value
+
+        If IsError(valorBR) Then valorBR = ""
+
+        textoBR = UCase(Trim(CStr(valorBR)))
+
+        If textoBR = "" Then
+
+            wsPago.Rows(filaActual).Interior.Color = COLOR_NARANJA
+            GoTo SiguienteFila
+
+        End If
+
+        If InStr(textoBR, "NO APLICA") > 0 Then
+
+            wsPago.Cells(filaActual, COL_F).Value = valorBR
+
+        ElseIf InStr(textoBR, "PENDIENTE") > 0 Then
+
+            wsPago.Cells(filaActual, COL_F).Value = valorBR
+
+        ElseIf Len(Trim(CStr(valorBR))) >= MIN_CHARS _
+           And Len(Trim(CStr(valorBR))) <= MAX_CHARS Then
+
+            wsPago.Cells(filaActual, COL_E).Value = valorBR
+            valorBS = wsAcum.Cells(filaAcum, COL_ORIGEN_BS).Value
+
+            If Trim(valorBS & "") <> "" Then
+
+                ' Monto en G
+                wsPago.Cells(filaActual, COL_G).Value = valorBS
+
+                ' Formula en H = G + U
+                wsPago.Cells(filaActual, COL_H).FormulaLocal = _
+                    "=G" & filaActual & "+U" & filaActual
+
+            End If
+
+        Else
+
+            wsPago.Cells(filaActual, COL_F).Value = valorBR
+
+        End If
+
+SiguienteFila:
+
+    Next filaActual
+
+    Application.ScreenUpdating = True
+
+    MsgBox "Proceso completado." & vbCrLf & _
+           "Filas procesadas: " & _
+           (ultimaFila - FILA_INICIO + 1), _
+           vbInformation, "Listo"
+
+End Sub
