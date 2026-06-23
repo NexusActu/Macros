@@ -1,0 +1,110 @@
+Sub PegarNotasDesdeAmarillo()
+
+    Dim wsAcum As Worksheet
+    Dim wsNotas As Worksheet
+    Dim ultimaFila As Long
+    Dim i As Long
+    Dim j As Integer
+    Dim folio As String
+    Dim filaDestino As Long
+    Dim colDestino As Integer
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    Set wsAcum = ThisWorkbook.Sheets("ACUMULADO SAT 2026")
+    Set wsNotas = ThisWorkbook.Sheets("NOTAS")
+
+    Const colA  As Integer = 1
+    Const colBG As Integer = 59
+    Const colBS As Integer = 71
+
+    Dim colorRosaPastel As Long
+    colorRosaPastel = RGB(255, 182, 193)
+
+    ultimaFila = wsAcum.Cells(wsAcum.Rows.Count, colA).End(xlUp).Row
+
+    Dim arrBS() As Variant
+    arrBS = wsAcum.Range(wsAcum.Cells(2, colBS), wsAcum.Cells(ultimaFila, colBS)).Value
+
+    Dim arrA() As Variant
+    arrA = wsAcum.Range(wsAcum.Cells(2, colA), wsAcum.Cells(ultimaFila, colA)).Value
+
+    Dim arrNotas(1 To 5) As Variant
+    For j = 1 To 5
+        arrNotas(j) = wsNotas.Cells(14, j + 1).Value
+    Next j
+
+    Dim dict As Object
+    Set dict = CreateObject("Scripting.Dictionary")
+    dict.CompareMode = 1
+    Dim k As Long
+    For k = 1 To UBound(arrA, 1)
+        Dim clave As String
+        clave = Trim(CStr(arrA(k, 1)))
+        If clave <> "" And Not dict.Exists(clave) Then
+            dict.Add clave, k + 1
+        End If
+    Next k
+
+    Dim procesadas As Long
+    procesadas = 0
+
+    For i = 1 To UBound(arrBS, 1)
+
+        Dim filaReal As Long
+        filaReal = i + 1
+
+        Dim colorCelda As Long
+        colorCelda = wsAcum.Cells(filaReal, colA).Interior.Color
+
+        Dim esAmarillo As Boolean
+        esAmarillo = (colorCelda = RGB(255, 255, 0)) Or _
+                     (colorCelda = RGB(255, 255, 153)) Or _
+                     (colorCelda = RGB(255, 235, 59)) Or _
+                     (colorCelda = RGB(255, 217, 102)) Or _
+                     (colorCelda = RGB(255, 230, 0))
+
+        If esAmarillo Then
+
+            folio = Trim(CStr(arrBS(i, 1)))
+
+            If Len(folio) >= 30 And Len(folio) <= 40 Then
+
+                If dict.Exists(folio) Then
+
+                    filaDestino = dict(folio)
+
+                    Dim rngDest As Range
+                    Set rngDest = wsAcum.Range( _
+                        wsAcum.Cells(filaDestino, colBG), _
+                        wsAcum.Cells(filaDestino, colBG + 4))
+
+                    For j = 1 To 5
+                        rngDest.Cells(1, j).Value = arrNotas(j)
+                    Next j
+
+                    rngDest.Interior.Color = colorRosaPastel
+                    procesadas = procesadas + 1
+
+                End If
+            End If
+        End If
+
+        If i Mod 1000 = 0 Then
+            Application.StatusBar = "Procesando fila " & filaReal & " de " & ultimaFila & _
+                                    "  |  Coincidencias: " & procesadas
+            DoEvents
+        End If
+
+    Next i
+
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+    Application.StatusBar = False
+
+    MsgBox "¡Terminado! Se procesaron " & procesadas & " coincidencias.", vbInformation
+
+End Sub
