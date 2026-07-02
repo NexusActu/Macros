@@ -1,0 +1,147 @@
+Sub CopiarNotasMacro2()
+
+    ' ============================================================
+    ' *** CONFIGURACION - CAMBIA ESTOS VALORES SI ES NECESARIO ***
+    Const WB_PROVEEDORES    As String = "Pago a proveedores"
+    Const HOJA_PROVEEDORES  As String = "proveedores"
+    Const HOJA_NOTAS        As String = "Copia de notas"
+    Const FILA_NOTAS        As Long = 8
+    Const COL_COPIA_INICIO  As Long = 8
+    Const COL_COPIA_FIN     As Long = 12
+    Const COL_BUSCAR_ACUM   As Long = 1
+    Const COL_BUSCAR_PROV   As Long = 4
+    Const COL_PEGAR_INICIO  As Long = 59
+    Const FILA_INICIO       As Long = 2
+
+    Const COLOR_NARANJA As Long = 49407
+    Const COLOR_ROJO As Long = 255      ' RGB(255,0,0)
+
+    ' ============================================================
+
+    Dim wbAcum      As Workbook
+    Dim wbProv      As Workbook
+    Dim wsAcum      As Worksheet
+    Dim wsProv      As Worksheet
+    Dim wsNotas     As Worksheet
+    Dim dictProv    As Object
+    Dim filaActual  As Long
+    Dim ultimaFila  As Long
+    Dim clave       As String
+
+    Set wbAcum = ThisWorkbook
+    Set wsAcum = wbAcum.ActiveSheet
+    Set wsNotas = wbAcum.Sheets(HOJA_NOTAS)
+
+    Dim wb As Workbook
+    For Each wb In Application.Workbooks
+        If InStr(1, wb.Name, WB_PROVEEDORES, vbTextCompare) > 0 Then
+            Set wbProv = wb
+            Exit For
+        End If
+    Next wb
+
+    If wbProv Is Nothing Then
+
+        Dim respuesta As Integer
+
+        respuesta = MsgBox("No se encontro el archivo '" & WB_PROVEEDORES & "' abierto." & vbCrLf & _
+                           "¿Deseas seleccionarlo manualmente?", _
+                           vbYesNo + vbExclamation, "Archivo no encontrado")
+
+        If respuesta = vbNo Then
+            MsgBox "Proceso cancelado.", vbInformation
+            Exit Sub
+        End If
+
+        Dim rutaProv As String
+
+        rutaProv = Application.GetOpenFilename( _
+                   "Archivos Excel (*.xlsx; *.xlsm; *.xls), *.xlsx; *.xlsm; *.xls", _
+                   , "Selecciona el archivo: " & WB_PROVEEDORES)
+
+        If rutaProv = "False" Then
+            MsgBox "No se selecciono ningun archivo. Proceso cancelado.", vbInformation
+            Exit Sub
+        End If
+
+        Set wbProv = Workbooks.Open(rutaProv)
+
+    End If
+
+    Set wsProv = wbProv.Sheets(HOJA_PROVEEDORES)
+
+    Set dictProv = CreateObject("Scripting.Dictionary")
+    dictProv.CompareMode = vbTextCompare
+
+    Dim ultimaProv As Long
+    ultimaProv = wsProv.Cells(wsProv.Rows.Count, COL_BUSCAR_PROV).End(xlUp).Row
+
+    Dim r As Long
+
+    For r = 2 To ultimaProv
+
+        Dim keyProv As String
+
+        keyProv = Trim(CStr(wsProv.Cells(r, COL_BUSCAR_PROV).Value))
+
+        If keyProv <> "" And Not dictProv.Exists(keyProv) Then
+            dictProv.Add keyProv, r
+        End If
+
+    Next r
+
+    ultimaFila = wsAcum.Cells(wsAcum.Rows.Count, COL_BUSCAR_ACUM).End(xlUp).Row
+
+    Application.ScreenUpdating = False
+
+    Dim filasCopiadas As Long
+    Dim filasSinMatch As Long
+
+    filasCopiadas = 0
+    filasSinMatch = 0
+
+    For filaActual = FILA_INICIO To ultimaFila
+
+        clave = Trim(CStr(wsAcum.Cells(filaActual, COL_BUSCAR_ACUM).Value))
+
+        If clave = "" Then GoTo SiguienteFila2
+
+        If dictProv.Exists(clave) Then
+
+            ' Si la fila ya esta roja, no hacer nada
+            If wsAcum.Rows(filaActual).Interior.Color = COLOR_ROJO Then
+                GoTo SiguienteFila2
+            End If
+
+            Dim colOrigen As Long
+            Dim colDestino As Long
+
+            colDestino = COL_PEGAR_INICIO
+
+            For colOrigen = COL_COPIA_INICIO To COL_COPIA_FIN
+                wsAcum.Cells(filaActual, colDestino).Value = wsNotas.Cells(FILA_NOTAS, colOrigen).Value
+                colDestino = colDestino + 1
+            Next colOrigen
+
+            wsAcum.Rows(filaActual).Interior.Color = COLOR_NARANJA
+
+            filasCopiadas = filasCopiadas + 1
+
+        Else
+
+            filasSinMatch = filasSinMatch + 1
+
+        End If
+
+SiguienteFila2:
+
+    Next filaActual
+
+    Application.ScreenUpdating = True
+
+    MsgBox "Macro 2 completada." & vbCrLf & vbCrLf & _
+           "✅ Filas copiadas y pintadas naranja: " & filasCopiadas & vbCrLf & _
+           "⏭️ Filas sin coincidencia: " & filasSinMatch, _
+           vbInformation, "Listo"
+
+End Sub
