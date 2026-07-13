@@ -1,0 +1,590 @@
+Option Explicit
+
+Const FILA_INICIO As Long = 2
+
+'=========================================================
+' MACRO 1 - CIERRE
+'
+' Procesos:
+' 1. Importar CLI
+' 2. Importar SO Edna
+' 3. Importar PO
+' 4. Importar DATA
+' 5. Crear Copia PO
+' 6. Crear tabla dinámica
+' 7. Llenar PROVISION JUNIO
+' 8. Llenar PO
+'
+' Mantiene fórmulas y valores.
+' Elimina formatos.
+'=========================================================
+
+Sub Macro1_Cierre()
+
+    On Error GoTo ErrorHandler
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+
+
+    Application.StatusBar = "Iniciando Macro 1 - Cierre..."
+
+
+    '==============================
+    ' IMPORTAR ARCHIVOS
+    '==============================
+
+    Application.StatusBar = "Importando CLI..."
+    If Not ImportarArchivo("CustomerLineItems (20)", "CLI") Then GoTo Cancelado
+
+
+    Application.StatusBar = "Importando SO Edna..."
+    If Not ImportarArchivo("Freight to Customer YTD 2026 (Global Sales Report) 0107", "SO Edna") Then GoTo Cancelado
+
+
+    Application.StatusBar = "Importando PO..."
+    If Not ImportarArchivo("PO", "PO") Then GoTo Cancelado
+
+
+    Application.StatusBar = "Importando DATA..."
+    If Not ImportarArchivo("export_20260701_000948", "DATA") Then GoTo Cancelado
+
+
+
+    '==============================
+    ' COPIA PO
+    '==============================
+
+    Application.StatusBar = "Creando Copia PO..."
+    CrearCopiaPO
+
+
+
+    '==============================
+    ' TABLA DINAMICA
+    '==============================
+
+    Application.StatusBar = "Creando tabla dinámica..."
+    CrearTablaDinamicaPO
+
+
+
+    '==============================
+    ' PROVISION JUNIO
+    '==============================
+
+    Application.StatusBar = "Preparando PROVISION JUNIO..."
+    LlenarProvisionJunio
+
+
+
+    '==============================
+    ' PO
+    '==============================
+
+    Application.StatusBar = "Preparando PO..."
+    LlenarHojaPO
+
+
+
+Salida:
+
+    Application.StatusBar = False
+
+    Application.Calculation = xlCalculationAutomatic
+    Application.CalculateFull
+
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Application.DisplayAlerts = True
+
+
+    MsgBox "Macro 1 - Cierre terminada correctamente.", vbInformation
+
+    Exit Sub
+
+
+
+Cancelado:
+
+    MsgBox "Proceso cancelado por el usuario.", vbExclamation
+
+    GoTo Salida
+
+
+
+ErrorHandler:
+
+    MsgBox "Error en Macro 1:" & vbCrLf & Err.Description, vbCritical
+
+    GoTo Salida
+
+
+End Sub
+
+
+
+'=========================================================
+' IMPORTAR ARCHIVO
+'
+' Copia la primera hoja del archivo seleccionado.
+'
+' Conserva:
+' - Valores
+' - Fórmulas
+'
+' Elimina:
+' - Formatos
+'=========================================================
+
+Private Function ImportarArchivo(nombreArchivo As String, nombreHoja As String) As Boolean
+
+
+    Dim ruta As Variant
+    Dim wbOrigen As Workbook
+    Dim wsOrigen As Worksheet
+    Dim wsDestino As Worksheet
+
+
+    ImportarArchivo = False
+
+
+    MsgBox "Selecciona el archivo:" & vbCrLf & _
+           nombreArchivo & vbCrLf & vbCrLf & _
+           "Se guardará como: " & nombreHoja, _
+           vbInformation, "Seleccionar archivo"
+
+
+
+    ruta = Application.GetOpenFilename( _
+            FileFilter:="Archivos Excel (*.xls*),*.xls*", _
+            Title:="Seleccionar " & nombreArchivo)
+
+
+
+    If ruta = False Then Exit Function
+
+
+
+    Set wbOrigen = Workbooks.Open(ruta, ReadOnly:=True)
+
+
+    Set wsOrigen = wbOrigen.Worksheets(1)
+
+
+
+    EliminarHojaSiExiste nombreHoja
+
+
+
+    Set wsDestino = ThisWorkbook.Worksheets.Add( _
+                    After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+
+
+    wsDestino.Name = nombreHoja
+
+
+
+    wsOrigen.UsedRange.Copy
+
+
+    wsDestino.Range("A1").PasteSpecial Paste:=xlPasteAll
+
+
+    wsDestino.Cells.ClearFormats
+
+
+    Application.CutCopyMode = False
+
+
+    wbOrigen.Close SaveChanges:=False
+
+
+    ImportarArchivo = True
+
+
+End Function
+'=========================================================
+' ELIMINAR HOJA SI EXISTE
+'=========================================================
+
+Private Sub EliminarHojaSiExiste(nombreHoja As String)
+
+    Dim ws As Worksheet
+
+    Application.DisplayAlerts = False
+
+    For Each ws In ThisWorkbook.Worksheets
+
+        If ws.Name = nombreHoja Then
+            ws.Delete
+            Exit Sub
+        End If
+
+    Next ws
+
+    Application.DisplayAlerts = True
+
+End Sub
+
+
+
+'=========================================================
+' CREAR COPIA PO
+'
+' Se realiza antes de modificar la hoja PO.
+'
+' Conserva fórmulas.
+' Elimina formatos.
+'=========================================================
+
+Private Sub CrearCopiaPO()
+
+
+    Dim wsPO As Worksheet
+    Dim wsCopia As Worksheet
+
+
+    Set wsPO = ThisWorkbook.Worksheets("PO")
+
+
+    EliminarHojaSiExiste "Copia PO"
+
+
+    Set wsCopia = ThisWorkbook.Worksheets.Add( _
+                    After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+
+
+    wsCopia.Name = "Copia PO"
+
+
+
+    wsPO.UsedRange.Copy
+
+
+    wsCopia.Range("A1").PasteSpecial Paste:=xlPasteAll
+
+
+    wsCopia.Cells.ClearFormats
+
+
+    Application.CutCopyMode = False
+
+
+End Sub
+
+
+
+'=========================================================
+' CREAR TABLA DINAMICA PO
+'
+' Fuente:
+'   Copia PO
+'
+' Filas:
+'   Short Text
+'
+' Valores:
+'   Sum of Next Price
+'
+' Se convierte a valores.
+'=========================================================
+
+Private Sub CrearTablaDinamicaPO()
+
+
+    Dim wsCopia As Worksheet
+    Dim wsPivot As Worksheet
+    Dim pc As PivotCache
+    Dim pt As PivotTable
+    Dim rangoDatos As Range
+    Dim ultimaFila As Long
+    Dim ultimaColumna As Long
+
+
+
+    Set wsCopia = ThisWorkbook.Worksheets("Copia PO")
+
+
+
+    EliminarHojaSiExiste "suma PO"
+
+
+
+    Set wsPivot = ThisWorkbook.Worksheets.Add( _
+                    After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+
+
+    wsPivot.Name = "suma PO"
+
+
+
+    ultimaFila = wsCopia.Cells(wsCopia.Rows.Count, "A").End(xlUp).Row
+
+
+    ultimaColumna = wsCopia.Cells(1, wsCopia.Columns.Count).End(xlToLeft).Column
+
+
+
+    Set rangoDatos = wsCopia.Range( _
+                    wsCopia.Cells(1, 1), _
+                    wsCopia.Cells(ultimaFila, ultimaColumna))
+
+
+
+    Set pc = ThisWorkbook.PivotCaches.Create( _
+                SourceType:=xlDatabase, _
+                SourceData:=rangoDatos)
+
+
+
+    Set pt = pc.CreatePivotTable( _
+                TableDestination:=wsPivot.Range("A1"), _
+                TableName:="PT_SumaPO")
+
+
+
+    With pt
+
+        .PivotFields("Short Text").Orientation = xlRowField
+
+
+        With .PivotFields("Next Price")
+
+            .Orientation = xlDataField
+            .Function = xlSum
+            .Name = "Sum of Next Price"
+
+        End With
+
+
+    End With
+
+
+
+    wsPivot.UsedRange.Value = wsPivot.UsedRange.Value
+
+
+
+End Sub
+
+
+
+
+'=========================================================
+' LLENAR PROVISION JUNIO
+'
+' Inserta columnas A:K
+'
+' L:AS copia DATA
+'
+' Fórmulas desde fila 2
+'=========================================================
+
+Private Sub LlenarProvisionJunio()
+
+
+    Dim wsProv As Worksheet
+    Dim wsData As Worksheet
+    Dim ultimaFila As Long
+
+
+
+    Set wsProv = ThisWorkbook.Worksheets("PROVISION JUNIO")
+
+    Set wsData = ThisWorkbook.Worksheets("DATA")
+
+
+
+    wsProv.Range("A:K").EntireColumn.Insert
+
+
+
+    wsProv.Range("A1:K1").Value = Array( _
+        "SALES ORDER", _
+        "FS", _
+        "MONTO FS", _
+        "DIF", _
+        "CLASIFICACIÓN", _
+        "INV DOC", _
+        "INV DOC DATE", _
+        "MATERIAL NAME", _
+        "CUSTOMER NUMBER", _
+        "NUMBR", _
+        "PROFIT CENTER")
+
+
+
+    ultimaFila = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
+
+
+
+    wsData.Range("A1:AS" & ultimaFila).Copy
+
+
+    wsProv.Range("L1").PasteSpecial Paste:=xlPasteAll
+
+
+    Application.CutCopyMode = False
+
+
+
+    If ultimaFila < FILA_INICIO Then Exit Sub
+
+
+
+    With wsProv
+
+
+        .Range("A" & FILA_INICIO & ":A" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(L2;'SO Edna'!D:D;'SO Edna'!A:A)"
+
+
+
+        .Range("B" & FILA_INICIO & ":B" & ultimaFila).FormulaLocal = _
+        "=BUSCARV(L2;'suma PO'!A:B;1;0)"
+
+
+
+        .Range("C" & FILA_INICIO & ":C" & ultimaFila).FormulaLocal = _
+        "=BUSCARV(L2;'suma PO'!A:B;2;0)"
+
+
+
+        .Range("D" & FILA_INICIO & ":D" & ultimaFila).FormulaLocal = _
+        "=C2-AM2"
+
+
+
+        .Range("E" & FILA_INICIO & ":E" & ultimaFila).FormulaLocal = _
+        "=SI(A2<>"""";""Outbound"";""Inbound"")"
+
+
+
+        .Range("F" & FILA_INICIO & ":F" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(L2;'SO Edna'!D:D;'SO Edna'!AM:AM)"
+
+
+
+        .Range("G" & FILA_INICIO & ":G" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(F2;CLI!L:L;CLI!E:E)"
+
+
+
+        .Range("H" & FILA_INICIO & ":H" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(L2;'SO Edna'!D:D;'SO Edna'!AF:AF)"
+
+
+
+        .Range("I" & FILA_INICIO & ":I" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(L2;'SO Edna'!D:D;'SO Edna'!G:G)"
+
+
+
+        .Range("J" & FILA_INICIO & ":J" & ultimaFila).FormulaLocal = _
+        "=VALOR.NUMERO(I2)"
+
+
+
+        .Range("K" & FILA_INICIO & ":K" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(1;(copa!G:G=J2)*(copa!D:D=H2);copa!A:A)"
+
+
+
+    End With
+
+
+
+End Sub
+
+
+
+
+'=========================================================
+' LLENAR HOJA PO
+'
+' Inserta columnas B:H
+'
+' Fórmulas desde fila 2
+'=========================================================
+
+Private Sub LlenarHojaPO()
+
+
+    Dim wsPO As Worksheet
+    Dim ultimaFila As Long
+
+
+
+    Set wsPO = ThisWorkbook.Worksheets("PO")
+
+
+
+    ultimaFila = wsPO.Cells(wsPO.Rows.Count, "A").End(xlUp).Row
+
+
+
+    If ultimaFila < FILA_INICIO Then Exit Sub
+
+
+
+    wsPO.Range("B:H").EntireColumn.Insert
+
+
+
+    wsPO.Range("B1:H1").Value = Array( _
+        "SALES ORDER", _
+        "INV DOCUMENT", _
+        "INVOICE DOC DATE", _
+        "FILTRO", _
+        "PROVISIÓN", _
+        "DIFERENCIA PROV", _
+        "CLASIFICACIÓN")
+
+
+
+    With wsPO
+
+
+        .Range("B" & FILA_INICIO & ":B" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(R2;'SO Edna'!D:D;'SO Edna'!A:A)"
+
+
+
+        .Range("C" & FILA_INICIO & ":C" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(R2;'SO Edna'!D:D;'SO Edna'!AM:AM)"
+
+
+
+        .Range("D" & FILA_INICIO & ":D" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(C2;CLI!L:L;CLI!E:E)"
+
+
+
+        .Range("E" & FILA_INICIO & ":E" & ultimaFila).FormulaLocal = _
+        "=SI(A2<>"""";""Outbound"";""Inbound"")"
+
+
+
+        .Range("F" & FILA_INICIO & ":F" & ultimaFila).FormulaLocal = _
+        "=BUSCARX(R2;'PROVISION MAYO'!L:L;'PROVISION MAYO'!U:U)"
+
+
+
+        .Range("G" & FILA_INICIO & ":G" & ultimaFila).FormulaLocal = _
+        "=F2-Y2"
+
+
+
+        .Range("H" & FILA_INICIO & ":H" & ultimaFila).FormulaLocal = _
+        "=SI(Y(F2="""";G2="""");""NO PROVISIONADO"";""PROVISIONADO"")"
+
+
+
+    End With
+
+
+
+End Sub
