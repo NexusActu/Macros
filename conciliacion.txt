@@ -1,0 +1,318 @@
+Attribute VB_Name = "Macro2_Conciliacion"
+Option Explicit
+
+'=====================================================================
+' MACRO 2 - CONCILIACION
+'
+' PARTE 1 (Sub Macro2_Conciliacion):
+'   Lee "ACUMULADO SAT 2026" (abierto o se pide), filtra 4 bloques y
+'   los guarda en un libro nuevo "Conciliacion Provisiones.xlsx"
+'   dentro de Descargas, con las hojas: ppd 99 / PUE 03 / terceros /
+'   registrados.
+'
+' PARTE 2 (Sub Macro2_BuscarAA):
+'   Se corre DESPUES, ya dentro de "Conciliacion Provisiones.xlsx",
+'   una vez que agregaste manualmente la hoja "AA". Inserta una
+'   columna D en "ppd 99" y "PUE 03" que busca la columna C en la
+'   columna B de "AA" y trae el dato de la columna A de "AA"
+'   (o "no encontrado" si no hay coincidencia).
+'
+' *** CONFIGURACION QUE DEBES REVISAR CADA MES ***
+'=====================================================================
+
+' >>> EDITA ESTA LINEA: letra de columna donde esta el mes/fecha
+' que se usa para filtrar "terceros" y "registrados" (columna con
+' la fecha de AGENTES ADUANALES). Mientras diga "XX" la macro no corre.
+Private Const COL_MES_LETRA As String = "XX"
+
+' >>> EDITA ESTA LINEA cada mes: el mes que quieres filtrar.
+' Funciona igual si la columna tiene una fecha real (toma el nombre
+' del mes) o si tiene el mes ya escrito como texto ("Agosto").
+Private Const MES_FILTRO As String = "Agosto"
+
+' Columnas fijas del archivo ACUMULADO SAT 2026 (segun lo descrito)
+Private Const COL_A As Long = 1    ' color sin relleno
+Private Const COL_B As Long = 2    ' NAD GLOBAL / WELLDEX INTERNACIONAL
+Private Const COL_AB As Long = 28  ' "99-Por definir" / "03-Transferencia..."
+Private Const COL_AC As Long = 29  ' "PPD-..." / "PUE-..."
+Private Const COL_BG As Long = 59  ' "AGENTES ADUANALES"
+Private Const COL_BR As Long = 70  ' "PENDIENTE DE EMISION"
+
+'=====================================================================
+' PARTE 1: genera "Conciliacion Provisiones.xlsx" con los 4 bloques
+'=====================================================================
+Sub Macro2_Conciliacion()
+
+    Dim wsOrigen As Worksheet
+    Dim wbDestino As Workbook
+    Dim arr As Variant
+    Dim sinRelleno() As Boolean
+    Dim lastRowOrigen As Long, lastColOrigen As Long, colMes As Long
+    Dim rutaDescargas As String
+
+    If COL_MES_LETRA = "XX" Then
+        MsgBox "Antes de correr esta macro, edita al inicio del modulo la constante " & _
+               "COL_MES_LETRA con la columna que contiene el mes/fecha (para 'terceros' " & _
+               "y 'registrados'), y revisa MES_FILTRO.", vbExclamation, "Falta configuracion"
+        Exit Sub
+    End If
+
+    On Error GoTo ErrorHandler
+
+    Set wsOrigen = ObtenerHojaOrigenSAT()
+    If wsOrigen Is Nothing Then GoTo Cancelado
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    lastRowOrigen = wsOrigen.Cells(wsOrigen.Rows.Count, "A").End(xlUp).Row
+    lastColOrigen = wsOrigen.Cells(1, wsOrigen.Columns.Count).End(xlToLeft).Column
+    If lastColOrigen < COL_BR Then lastColOrigen = COL_BR
+
+    arr = wsOrigen.Range(wsOrigen.Cells(1, 1), wsOrigen.Cells(lastRowOrigen, lastColOrigen)).Value
+    sinRelleno = ObtenerColorSinRelleno(wsOrigen, lastRowOrigen)
+    colMes = wsOrigen.Range(COL_MES_LETRA & "1").Column
+
+    Set wbDestino = Workbooks.Add
+    Do While wbDestino.Sheets.Count > 1
+        wbDestino.Sheets(wbDestino.Sheets.Count).Delete
+    Loop
+
+    GenerarHojaBloque wbDestino, arr, sinRelleno, "ppd 99", lastColOrigen, colMes, True
+    GenerarHojaBloque wbDestino, arr, sinRelleno, "PUE 03", lastColOrigen, colMes, False
+    GenerarHojaBloque wbDestino, arr, sinRelleno, "terceros", lastColOrigen, colMes, False
+    GenerarHojaBloque wbDestino, arr, sinRelleno, "registrados", lastColOrigen, colMes, False
+
+    rutaDescargas = Environ("USERPROFILE") & "\Downloads\Conciliacion Provisiones.xlsx"
+    wbDestino.SaveAs Filename:=rutaDescargas, FileFormat:=xlOpenXMLWorkbook
+
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
+    MsgBox "Archivo 'Conciliacion Provisiones.xlsx' creado en Descargas." & vbCrLf & vbCrLf & _
+           "Siguiente paso: agrega manualmente la hoja 'AA' (columna A = dato, " & _
+           "columna B = clave de busqueda) y corre la macro Macro2_BuscarAA.", vbInformation, "Listo"
+    Exit Sub
+
+Cancelado:
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    MsgBox "Proceso cancelado.", vbExclamation
+    Exit Sub
+
+ErrorHandler:
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    MsgBox "Ocurrio un error:" & vbCrLf & Err.Description, vbCritical
+
+End Sub
+
+'=====================================================================
+' Busca el libro "ACUMULADO SAT 2026" entre los abiertos; si no esta
+' abierto, lo pide. La hoja usada tiene el mismo nombre que el archivo.
+'=====================================================================
+Private Function ObtenerHojaOrigenSAT() As Worksheet
+
+    Dim wb As Workbook
+    Dim wbOrigen As Workbook
+    Dim rutaArchivo As Variant
+    Dim nombreSinExt As String
+
+    For Each wb In Application.Workbooks
+        If InStr(1, wb.Name, "ACUMULADO SAT 2026", vbTextCompare) > 0 Then
+            Set wbOrigen = wb
+            Exit For
+        End If
+    Next wb
+
+    If wbOrigen Is Nothing Then
+        MsgBox "Selecciona el archivo ACUMULADO SAT 2026.", vbInformation
+        rutaArchivo = Application.GetOpenFilename( _
+            FileFilter:="Archivos Excel (*.xls; *.xlsx; *.xlsm), *.xls; *.xlsx; *.xlsm", _
+            Title:="Selecciona el archivo ACUMULADO SAT 2026")
+        If rutaArchivo = False Then Exit Function
+        Set wbOrigen = Workbooks.Open(rutaArchivo)
+    End If
+
+    nombreSinExt = wbOrigen.Name
+    If InStrRev(nombreSinExt, ".") > 0 Then
+        nombreSinExt = Left(nombreSinExt, InStrRev(nombreSinExt, ".") - 1)
+    End If
+
+    On Error Resume Next
+    Set ObtenerHojaOrigenSAT = wbOrigen.Sheets(nombreSinExt)
+    On Error GoTo 0
+
+    If ObtenerHojaOrigenSAT Is Nothing Then
+        MsgBox "No se encontro una hoja llamada '" & nombreSinExt & "' en el archivo." & vbCrLf & _
+               "Verifica que la hoja tenga exactamente el mismo nombre que el archivo.", vbCritical
+    End If
+
+End Function
+
+'=====================================================================
+' Devuelve un arreglo Boolean: True si la celda de columna A de esa
+' fila NO tiene color de relleno (fondo transparente/blanco por defecto)
+'=====================================================================
+Private Function ObtenerColorSinRelleno(ws As Worksheet, lastRow As Long) As Boolean()
+    Dim resultado() As Boolean
+    Dim i As Long
+    ReDim resultado(1 To lastRow)
+    For i = 2 To lastRow
+        resultado(i) = (ws.Cells(i, COL_A).Interior.ColorIndex = xlNone)
+    Next i
+    ObtenerColorSinRelleno = resultado
+End Function
+
+'=====================================================================
+' Evalua si la fila "fila" del arreglo "arr" cumple las condiciones
+' del bloque indicado.
+'=====================================================================
+Private Function CumpleCondicion(arr As Variant, fila As Long, bloque As String, _
+                                  sinRelleno() As Boolean, colMes As Long) As Boolean
+
+    Dim valAB As String, valAC As String, valBR As String
+    Dim valBG As String, valB As String
+
+    Select Case bloque
+
+        Case "ppd 99"
+            valAC = Norm(arr(fila, COL_AC))
+            valAB = Norm(arr(fila, COL_AB))
+            valBR = Norm(arr(fila, COL_BR))
+            CumpleCondicion = sinRelleno(fila) _
+                And valAC = "PPD-PAGO EN PARCIALIDADES O DIFERIDO" _
+                And valAB = "99-POR DEFINIR" _
+                And valBR <> "PENDIENTE DE EMISION"
+
+        Case "PUE 03"
+            valAC = Norm(arr(fila, COL_AC))
+            valAB = Norm(arr(fila, COL_AB))
+            CumpleCondicion = sinRelleno(fila) _
+                And valAC = "PUE-PAGO EN UNA SOLA EXHIBICIÓN" _
+                And valAB = "03-TRANSFERENCIA ELECTRÓNICA DE FONDOS"
+
+        Case "terceros"
+            valBG = Norm(arr(fila, COL_BG))
+            valB = Norm(arr(fila, COL_B))
+            CumpleCondicion = valBG = "AGENTES ADUANALES" _
+                And CoincideMes(arr(fila, colMes)) _
+                And valB <> "NAD GLOBAL" _
+                And valB <> "WELLDEX INTERNACIONAL"
+
+        Case "registrados"
+            valBG = Norm(arr(fila, COL_BG))
+            valB = Norm(arr(fila, COL_B))
+            CumpleCondicion = valBG = "AGENTES ADUANALES" _
+                And CoincideMes(arr(fila, colMes)) _
+                And (valB = "NAD GLOBAL" Or valB = "WELLDEX INTERNACIONAL")
+
+    End Select
+
+End Function
+
+Private Function Norm(v As Variant) As String
+    Norm = UCase(Trim(CStr(v & "")))
+End Function
+
+' Compara la celda de mes/fecha contra MES_FILTRO. Funciona si la
+' celda trae una fecha real (toma el nombre del mes) o si ya trae
+' el mes como texto.
+Private Function CoincideMes(valorCelda As Variant) As Boolean
+    Dim nombreMes As String
+    If IsDate(valorCelda) Then
+        nombreMes = Format(CDate(valorCelda), "mmmm")
+    Else
+        nombreMes = CStr(valorCelda)
+    End If
+    CoincideMes = (UCase(Trim(nombreMes)) = UCase(Trim(MES_FILTRO)))
+End Function
+
+'=====================================================================
+' Filtra el arreglo "arr" segun el bloque y escribe el resultado
+' (encabezado + filas que cumplen) en una hoja nueva del libro destino.
+'=====================================================================
+Private Sub GenerarHojaBloque(wbDestino As Workbook, arr As Variant, sinRelleno() As Boolean, _
+                               bloque As String, lastCol As Long, colMes As Long, _
+                               esPrimeraHoja As Boolean)
+
+    Dim totalFilas As Long, i As Long, c As Long, conteo As Long, filaOut As Long
+    Dim salida() As Variant
+    Dim wsDestino As Worksheet
+
+    totalFilas = UBound(arr, 1)
+
+    conteo = 0
+    For i = 2 To totalFilas
+        If CumpleCondicion(arr, i, bloque, sinRelleno, colMes) Then conteo = conteo + 1
+    Next i
+
+    ReDim salida(1 To conteo + 1, 1 To lastCol)
+
+    For c = 1 To lastCol
+        salida(1, c) = arr(1, c)
+    Next c
+
+    filaOut = 1
+    For i = 2 To totalFilas
+        If CumpleCondicion(arr, i, bloque, sinRelleno, colMes) Then
+            filaOut = filaOut + 1
+            For c = 1 To lastCol
+                salida(filaOut, c) = arr(i, c)
+            Next c
+        End If
+    Next i
+
+    If esPrimeraHoja Then
+        Set wsDestino = wbDestino.Sheets(1)
+    Else
+        Set wsDestino = wbDestino.Sheets.Add(After:=wbDestino.Sheets(wbDestino.Sheets.Count))
+    End If
+    wsDestino.Name = bloque
+
+    wsDestino.Range("A1").Resize(filaOut, lastCol).Value = salida
+
+End Sub
+
+'=====================================================================
+' PARTE 2: correr YA DENTRO de "Conciliacion Provisiones.xlsx", una
+' vez que agregaste manualmente la hoja "AA" (A = dato, B = clave).
+'=====================================================================
+Sub Macro2_BuscarAA()
+
+    Dim wsPPD As Worksheet, wsPUE As Worksheet, wsAA As Worksheet
+
+    On Error Resume Next
+    Set wsPPD = ActiveWorkbook.Sheets("ppd 99")
+    Set wsPUE = ActiveWorkbook.Sheets("PUE 03")
+    Set wsAA = ActiveWorkbook.Sheets("AA")
+    On Error GoTo 0
+
+    If wsPPD Is Nothing Or wsPUE Is Nothing Or wsAA Is Nothing Then
+        MsgBox "Asegurate de que el libro activo (Conciliacion Provisiones.xlsx) tenga " & _
+               "las hojas 'ppd 99', 'PUE 03' y 'AA'.", vbExclamation
+        Exit Sub
+    End If
+
+    InsertarBusquedaAA wsPPD
+    InsertarBusquedaAA wsPUE
+
+    MsgBox "Busqueda en hoja AA completada en 'ppd 99' y 'PUE 03' (columna D).", vbInformation
+
+End Sub
+
+Private Sub InsertarBusquedaAA(ws As Worksheet)
+
+    Dim lastRow As Long
+
+    lastRow = ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
+    If lastRow < 2 Then Exit Sub
+
+    ws.Columns("D:D").Insert Shift:=xlToRight
+    ws.Range("D1").Value = "DATO AA"
+    ws.Range("D1").Font.Bold = True
+
+    ws.Range("D2:D" & lastRow).Formula = _
+        "=IFERROR(INDEX(AA!A:A,MATCH(C2,AA!B:B,0)),""no encontrado"")"
+
+End Sub
