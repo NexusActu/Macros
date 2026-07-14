@@ -1,0 +1,294 @@
+Option Explicit
+
+'=========================================================
+' MACRO 1 - CONCILIACION PROVISIONES
+'
+' Flujo:
+' 1. Seleccionar ACUMULADO SAT 2026.xlsx
+' 2. Pedir mes de conciliación
+' 3. Crear copia habilitada para macros
+' 4. Crear hojas:
+'       - ppd 99
+'       - PUE 03
+'       - terceros
+'       - registrados
+'
+'=========================================================
+
+
+Sub Macro1_Conciliacion()
+
+
+    '===============================
+    ' CONFIGURACION
+    '===============================
+
+    Const HOJA_ORIGEN As String = "ACUMULADO SAT 2026"
+
+    Const HOJA_PPD As String = "ppd 99"
+    Const HOJA_PUE As String = "PUE 03"
+    Const HOJA_TERCEROS As String = "terceros"
+    Const HOJA_REGISTRADOS As String = "registrados"
+
+
+    'Modificar esta columna según donde esté el MES
+    '
+    'Ejemplos:
+    'A  = 1
+    'B  = 2
+    'BG = 59
+    '
+    Const COL_MES As Long = 1
+
+
+    Const FILA_INICIO As Long = 2
+
+
+
+    '===============================
+    ' VARIABLES
+    '===============================
+
+    Dim wbOrigen As Workbook
+    Dim wbTrabajo As Workbook
+
+    Dim wsOrigen As Worksheet
+
+    Dim archivo As Variant
+
+    Dim rutaNueva As String
+
+    Dim mes As String
+
+    Dim ultimaFila As Long
+    Dim ultimaColumna As Long
+
+    Dim rangoFiltro As Range
+
+
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+
+
+    '===============================
+    ' SOLICITAR MES
+    '===============================
+
+    mes = ObtenerMesValido()
+
+    If mes = "" Then Exit Sub
+
+
+
+    '===============================
+    ' SELECCIONAR ARCHIVO ORIGEN
+    '===============================
+
+    archivo = Application.GetOpenFilename( _
+                FileFilter:="Archivos Excel (*.xlsx),*.xlsx", _
+                Title:="Selecciona ACUMULADO SAT 2026")
+
+
+    If archivo = False Then
+        MsgBox "No se seleccionó archivo.", vbExclamation
+        Exit Sub
+    End If
+
+
+
+    Set wbOrigen = Workbooks.Open(archivo)
+
+
+
+    '===============================
+    ' CREAR COPIA XLSM
+    '===============================
+
+    rutaNueva = Environ("USERPROFILE") & _
+                "\Downloads\Conciliacion Provisiones.xlsm"
+
+
+    wbOrigen.SaveCopyAs rutaNueva
+
+
+    wbOrigen.Close SaveChanges:=False
+
+
+
+    Set wbTrabajo = Workbooks.Open(rutaNueva)
+
+
+
+    '===============================
+    ' VALIDAR HOJA
+    '===============================
+
+    Set wsOrigen = wbTrabajo.Worksheets(HOJA_ORIGEN)
+
+
+
+    '===============================
+    ' CREAR HOJAS
+    '===============================
+
+
+    CrearHojaSiNoExiste wbTrabajo, HOJA_PPD
+    CrearHojaSiNoExiste wbTrabajo, HOJA_PUE
+    CrearHojaSiNoExiste wbTrabajo, HOJA_TERCEROS
+    CrearHojaSiNoExiste wbTrabajo, HOJA_REGISTRADOS
+
+
+
+    '===============================
+    ' FILTRAR INFORMACION
+    '===============================
+
+
+    ultimaFila = wsOrigen.Cells(wsOrigen.Rows.Count, COL_MES).End(xlUp).Row
+
+    ultimaColumna = wsOrigen.Cells(1, wsOrigen.Columns.Count).End(xlToLeft).Column
+
+
+    Set rangoFiltro = wsOrigen.Range( _
+        wsOrigen.Cells(1, 1), _
+        wsOrigen.Cells(ultimaFila, ultimaColumna))
+
+
+    rangoFiltro.AutoFilter _
+        Field:=COL_MES, _
+        Criteria1:=mes
+
+
+
+    'Copiar visibles a ppd 99
+
+    On Error Resume Next
+
+    rangoFiltro.SpecialCells(xlCellTypeVisible).Copy _
+        wbTrabajo.Worksheets(HOJA_PPD).Range("A1")
+
+    On Error GoTo 0
+
+
+
+    If wsOrigen.AutoFilterMode Then
+        wsOrigen.AutoFilterMode = False
+    End If
+
+
+
+    '===============================
+    ' GUARDAR
+    '===============================
+
+
+    wbTrabajo.Save
+
+
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+
+
+    MsgBox "Archivo creado correctamente:" & vbCrLf & _
+           rutaNueva, vbInformation
+
+
+End Sub
+
+
+
+
+
+'=========================================================
+' VALIDACION DE MES
+'=========================================================
+
+Function ObtenerMesValido() As String
+
+
+    Dim entrada As String
+    Dim meses
+    Dim i As Long
+
+
+    meses = Array( _
+    "ENERO", _
+    "FEBRERO", _
+    "MARZO", _
+    "ABRIL", _
+    "MAYO", _
+    "JUNIO", _
+    "JULIO", _
+    "AGOSTO", _
+    "SEPTIEMBRE", _
+    "OCTUBRE", _
+    "NOVIEMBRE", _
+    "DICIEMBRE")
+
+
+    Do
+
+        entrada = UCase(Trim(InputBox("Ingrese mes de conciliación")))
+
+
+        If entrada = "" Then
+            ObtenerMesValido = ""
+            Exit Function
+        End If
+
+
+
+        For i = LBound(meses) To UBound(meses)
+
+            If Left(meses(i), Len(entrada)) = entrada Then
+
+                ObtenerMesValido = meses(i)
+                Exit Function
+
+            End If
+
+        Next i
+
+
+
+        MsgBox "Mes incorrecto.", vbExclamation
+
+
+    Loop
+
+
+End Function
+
+
+
+
+
+'=========================================================
+' CREAR HOJA SI NO EXISTE
+'=========================================================
+
+Sub CrearHojaSiNoExiste(wb As Workbook, nombre As String)
+
+
+    Dim ws As Worksheet
+
+
+    On Error Resume Next
+
+    Set ws = wb.Worksheets(nombre)
+
+    On Error GoTo 0
+
+
+    If ws Is Nothing Then
+
+        wb.Worksheets.Add(After:= _
+        wb.Worksheets(wb.Worksheets.Count)).Name = nombre
+
+    End If
+
+
+End Sub
