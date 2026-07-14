@@ -1,0 +1,41 @@
+'Si en BG ya existe información, se salta la fila
+    If Trim(CStr(wsAcum.Cells(filaActual, COL_PEGAR_INICIO).Value)) <> "" Then
+        GoTo SiguienteFila2
+    End If
+
+-------------------------------------
+
+For filaActual = FILA_INICIO To ultimaFila
+
+    clave = Trim(CStr(wsAcum.Cells(filaActual, COL_BUSCAR_ACUM).Value))
+    If clave = "" Then GoTo SiguienteFila2
+
+    'Si en BG ya existe información, se salta la fila
+    If Trim(CStr(wsAcum.Cells(filaActual, COL_PEGAR_INICIO).Value)) <> "" Then
+        GoTo SiguienteFila2
+    End If
+
+    'Si la fila está de color rojo, se la salta
+    If wsAcum.Cells(filaActual, COL_BUSCAR_ACUM).Interior.Color = COLOR_ROJO Then
+        GoTo SiguienteFila2
+    End If
+
+    If dictProv.Exists(clave) Then
+        'Si encontro: copia, pega y pinta de naranja
+        Dim colOrigen As Long
+        Dim colDestino As Long
+        colDestino = COL_PEGAR_INICIO
+
+        For colOrigen = COL_COPIA_INICIO To COL_COPIA_FIN
+            wsAcum.Cells(filaActual, colDestino).Value = wsNotas.Cells(FILA_NOTAS, colOrigen).Value
+            colDestino = colDestino + 1
+        Next colOrigen
+
+        wsAcum.Rows(filaActual).Interior.Color = COLOR_NARANJA
+        filasCopiadas = filasCopiadas + 1
+    Else
+        filasSinMatch = filasSinMatch + 1
+    End If
+
+SiguienteFila2:
+Next filaActual
