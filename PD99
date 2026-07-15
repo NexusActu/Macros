@@ -1,0 +1,432 @@
+Option Explicit
+
+'=========================================================
+' MACRO CONCILIACION PROVISIONES
+'
+' Procesos:
+' 1. Obtener archivo ACUMULADO SAT 2026
+' 2. Crear archivo Conciliacion Provisiones
+' 3. Crear hojas:
+'       - ppd 99
+'       - PUE 03
+'       - terceros
+'       - registrados
+'
+'=========================================================
+
+
+Sub Macro_Conciliacion()
+
+
+    '===============================
+    ' CONFIGURACION
+    '===============================
+
+    Const NOMBRE_ARCHIVO As String = "ACUMULADO SAT 2026.xlsx"
+    Const HOJA_ORIGEN As String = "ACUMULADO SAT 2026"
+
+
+    Const HOJA_PPD As String = "ppd 99"
+    Const HOJA_PUE As String = "PUE 03"
+    Const HOJA_TERCEROS As String = "terceros"
+    Const HOJA_REGISTRADOS As String = "registrados"
+
+
+    'CAMBIAR CADA MES
+    Const MES_CONCILIACION As String = "AGOSTO"
+
+
+    'Columna del mes
+    ' BH = 60
+    Const COL_MES As Long = 60
+
+
+    'Columnas
+    Const COL_COLOR As Long = 1       'A
+    Const COL_B As Long = 2           'B
+    Const COL_AB As Long = 28         'AB
+    Const COL_AC As Long = 29         'AC
+    Const COL_BG As Long = 59         'BG
+    Const COL_BR As Long = 70         'BR
+
+
+
+    Dim wbAcum As Workbook
+    Dim wbNuevo As Workbook
+
+    Dim archivo As Variant
+    Dim rutaGuardar As String
+
+
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+
+
+    '===============================
+    ' BUSCAR ACUMULADO ABIERTO
+    '===============================
+
+    On Error Resume Next
+    Set wbAcum = Workbooks(NOMBRE_ARCHIVO)
+    On Error GoTo 0
+
+
+
+    '===============================
+    ' SI NO ESTA ABIERTO PEDIRLO
+    '===============================
+
+    If wbAcum Is Nothing Then
+
+
+        archivo = Application.GetOpenFilename( _
+                    "Archivos Excel (*.xlsx),*.xlsx", _
+                    , _
+                    "Selecciona ACUMULADO SAT 2026")
+
+
+        If archivo = False Then Exit Sub
+
+
+        Set wbAcum = Workbooks.Open(archivo)
+
+
+    End If
+
+
+
+    '===============================
+    ' CREAR ARCHIVO NUEVO
+    '===============================
+
+    Set wbNuevo = Workbooks.Add
+
+
+
+    Do While wbNuevo.Worksheets.Count > 1
+        wbNuevo.Worksheets(1).Delete
+    Loop
+
+
+    wbNuevo.Worksheets(1).Name = HOJA_PPD
+
+
+    wbNuevo.Worksheets.Add.Name = HOJA_PUE
+    wbNuevo.Worksheets.Add.Name = HOJA_TERCEROS
+    wbNuevo.Worksheets.Add.Name = HOJA_REGISTRADOS
+
+
+
+    '===============================
+    ' GENERAR HOJAS
+    '===============================
+
+    CrearPPD99 wbAcum, wbNuevo
+
+    CrearPUE03 wbAcum, wbNuevo
+
+    CrearTerceros wbAcum, wbNuevo, MES_CONCILIACION
+
+    CrearRegistrados wbAcum, wbNuevo, MES_CONCILIACION
+
+
+
+    '===============================
+    ' GUARDAR
+    '===============================
+
+    rutaGuardar = Environ("USERPROFILE") & _
+                  "\Downloads\Conciliacion Provisiones.xlsm"
+
+
+
+    wbNuevo.SaveAs _
+        Filename:=rutaGuardar, _
+        FileFormat:=xlOpenXMLWorkbookMacroEnabled
+
+
+
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+
+
+    MsgBox "Conciliación creada correctamente.", vbInformation
+
+
+
+End Sub
+
+
+
+
+
+'=========================================================
+' PPD 99
+'=========================================================
+
+Sub CrearPPD99(wbAcum As Workbook, wbNuevo As Workbook)
+
+
+    Dim ws As Worksheet
+    Dim wsDest As Worksheet
+    Dim rango As Range
+
+
+    Set ws = wbAcum.Worksheets("ACUMULADO SAT 2026")
+    Set wsDest = wbNuevo.Worksheets("ppd 99")
+
+
+    Set rango = ObtenerRango(ws)
+
+
+
+    QuitarFiltros ws
+
+
+
+    With rango
+
+        .AutoFilter Field:=1, _
+                    Criteria1:=xlNoFill, _
+                    Operator:=xlFilterNoFill
+
+
+        .AutoFilter Field:=29, _
+                    Criteria1:="PPD-Pago en parcialidades o diferido"
+
+
+        .AutoFilter Field:=28, _
+                    Criteria1:="99-Por definir"
+
+
+        .AutoFilter Field:=70, _
+                    Criteria1:="<>PENDIENTE DE EMISION"
+
+
+    End With
+
+
+    CopiarVisible rango, wsDest
+
+
+    QuitarFiltros ws
+
+
+End Sub
+
+
+
+
+
+'=========================================================
+' PUE 03
+'=========================================================
+
+Sub CrearPUE03(wbAcum As Workbook, wbNuevo As Workbook)
+
+
+    Dim ws As Worksheet
+    Dim wsDest As Worksheet
+    Dim rango As Range
+
+
+    Set ws = wbAcum.Worksheets("ACUMULADO SAT 2026")
+    Set wsDest = wbNuevo.Worksheets("PUE 03")
+
+
+    Set rango = ObtenerRango(ws)
+
+
+    QuitarFiltros ws
+
+
+    With rango
+
+        .AutoFilter Field:=1, _
+                    Criteria1:=xlNoFill, _
+                    Operator:=xlFilterNoFill
+
+
+        .AutoFilter Field:=29, _
+                    Criteria1:="PUE-Pago en una sola exhibición"
+
+
+        .AutoFilter Field:=28, _
+                    Criteria1:="03-Transferencia electrónica de fondos"
+
+
+    End With
+
+
+    CopiarVisible rango, wsDest
+
+
+    QuitarFiltros ws
+
+
+End Sub
+
+
+
+
+
+'=========================================================
+' TERCEROS
+'=========================================================
+
+Sub CrearTerceros(wbAcum As Workbook, wbNuevo As Workbook, mes As String)
+
+
+    Dim ws As Worksheet
+    Dim wsDest As Worksheet
+    Dim rango As Range
+
+
+    Set ws = wbAcum.Worksheets("ACUMULADO SAT 2026")
+    Set wsDest = wbNuevo.Worksheets("terceros")
+
+
+    Set rango = ObtenerRango(ws)
+
+
+    QuitarFiltros ws
+
+
+    With rango
+
+        .AutoFilter Field:=59, _
+                    Criteria1:="AGENTES ADUANALES"
+
+
+        .AutoFilter Field:=60, _
+                    Criteria1:=mes
+
+
+        .AutoFilter Field:=2, _
+                    Criteria1:="<>NAD GLOBAL", _
+                    Operator:=xlAnd, _
+                    Criteria2:="<>WELLDEX INTERNACIONAL"
+
+    End With
+
+
+    CopiarVisible rango, wsDest
+
+
+    QuitarFiltros ws
+
+
+End Sub
+
+
+
+
+
+'=========================================================
+' REGISTRADOS
+'=========================================================
+
+Sub CrearRegistrados(wbAcum As Workbook, wbNuevo As Workbook, mes As String)
+
+
+    Dim ws As Worksheet
+    Dim wsDest As Worksheet
+    Dim rango As Range
+
+
+    Set ws = wbAcum.Worksheets("ACUMULADO SAT 2026")
+    Set wsDest = wbNuevo.Worksheets("registrados")
+
+
+    Set rango = ObtenerRango(ws)
+
+
+    QuitarFiltros ws
+
+
+    With rango
+
+        .AutoFilter Field:=59, _
+                    Criteria1:="AGENTES ADUANALES"
+
+
+        .AutoFilter Field:=60, _
+                    Criteria1:=mes
+
+
+        .AutoFilter Field:=2, _
+                    Criteria1:="NAD GLOBAL", _
+                    Operator:=xlOr, _
+                    Criteria2:="WELLDEX INTERNACIONAL"
+
+    End With
+
+
+    CopiarVisible rango, wsDest
+
+
+    QuitarFiltros ws
+
+
+End Sub
+
+
+
+
+
+'=========================================================
+' FUNCIONES AUXILIARES
+'=========================================================
+
+Function ObtenerRango(ws As Worksheet) As Range
+
+
+    Dim ultimaFila As Long
+    Dim ultimaColumna As Long
+
+
+    ultimaFila = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    ultimaColumna = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+
+
+    Set ObtenerRango = ws.Range( _
+        ws.Cells(1, 1), _
+        ws.Cells(ultimaFila, ultimaColumna))
+
+
+End Function
+
+
+
+
+
+Sub CopiarVisible(rango As Range, destino As Worksheet)
+
+
+    On Error Resume Next
+
+    rango.SpecialCells(xlCellTypeVisible).Copy _
+        destino.Range("A1")
+
+    On Error GoTo 0
+
+
+End Sub
+
+
+
+
+
+Sub QuitarFiltros(ws As Worksheet)
+
+
+    If ws.AutoFilterMode Then
+        ws.AutoFilterMode = False
+    End If
+
+
+End Sub
